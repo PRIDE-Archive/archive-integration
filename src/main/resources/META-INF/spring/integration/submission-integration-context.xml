@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-redis="http://www.springframework.org/schema/integration/redis"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration.xsd
+                           http://www.springframework.org/schema/integration/redis http://www.springframework.org/schema/integration/redis/spring-integration-redis-3.0.xsd">
+
+    <!-- connect to incoming submission queue backed by redis, fetch messages and adapt them for internal channel-->
+    <int-redis:queue-inbound-channel-adapter id="submissionInboundAdapter"
+                                             connection-factory="redisConnectionFactory"
+                                             channel="incomingSubmissionChannel"
+                                             error-channel="incomingSubmissionLoggingChannel"
+                                             queue="${message.incoming.submission.queue}"
+                                             serializer="incomingSubmissionJsonRedisSerializer"/>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="incomingSubmissionLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="incomingSubmissionLogger"/>
+
+    <bean id="incomingSubmissionJsonRedisSerializer"
+          class="org.springframework.data.redis.serializer.JacksonJsonRedisSerializer">
+        <constructor-arg name="type" value="uk.ac.ebi.pride.integration.message.model.impl.IncomingSubmissionPayload"/>
+    </bean>
+
+    <!-- Publish subscribe channel back by redis, broadcast messages to all subscribers -->
+    <!--<int-redis:publish-subscribe-channel id="incomingSubmissionChannel"-->
+                                         <!--connection-factory="redisConnectionFactory"-->
+                                         <!--message-converter="incomingSubmissionJsonMessageConverter"-->
+                                         <!--topic-name="${message.submission.publish.subscribe.channel}">-->
+        <!--<int-redis:interceptors>-->
+            <!--<int:wire-tap channel="incomingSubmissionPubSubLoggingChannel"/>-->
+        <!--</int-redis:interceptors>-->
+    <!--</int-redis:publish-subscribe-channel>-->
+
+    <!-- Logging channel -->
+    <!--<int:logging-channel-adapter id="incomingSubmissionPubSubLoggingChannel" log-full-message="true" level="INFO"-->
+                                 <!--logger-name="incomingSubmissionPubSubLogger"/>-->
+
+    <!-- Message converter for converting object to json string for channel to transfer the messages -->
+    <!--<bean id="incomingSubmissionJsonMessageConverter"-->
+          <!--class="org.springframework.integration.support.converter.SimpleMessageConverter">-->
+        <!--<constructor-arg name="inboundMessageMapper">-->
+            <!--<bean class="org.springframework.integration.support.json.JsonInboundMessageMapper">-->
+                <!--<constructor-arg name="payloadType"-->
+                                 <!--value="uk.ac.ebi.pride.integration.message.model.impl.IncomingSubmissionPayload"/>-->
+                <!--<constructor-arg name="messageParser">-->
+                    <!--<bean class="org.springframework.integration.support.json.Jackson2JsonMessageParser"/>-->
+                <!--</constructor-arg>-->
+            <!--</bean>-->
+        <!--</constructor-arg>-->
+        <!--<constructor-arg name="outboundMessageMapper">-->
+            <!--<bean class="org.springframework.integration.support.json.JsonOutboundMessageMapper"/>-->
+        <!--</constructor-arg>-->
+    <!--</bean>-->
+
+    <!-- Incoming submission message channel -->
+    <int:channel id="incomingSubmissionChannel">
+        <int:interceptors>
+            <int:wire-tap channel="incomingSubmissionTypeLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- Logging channel -->
+    <int:logging-channel-adapter id="incomingSubmissionTypeLoggingChannel" log-full-message="true" level="INFO"
+        logger-name="incomingSubmissionTypeLogger"/>
+
+    <!-- Router for different submission types -->
+    <int:recipient-list-router input-channel="incomingSubmissionChannel" id="submissionTypeBasedRouter">
+        <int:recipient channel="priorMzTabGenerationChannel" selector-expression="!(payload.submissionType.equals(T(uk.ac.ebi.pride.archive.dataprovider.project.SubmissionType).PARTIAL))"/>
+        <int:recipient channel="priorMgfGenerationChannel" selector-expression="!(payload.submissionType.equals(T(uk.ac.ebi.pride.archive.dataprovider.project.SubmissionType).PARTIAL))"/>
+        <int:recipient channel="priorSubmissionCompleteChannel" selector-expression="payload.submissionType.equals(T(uk.ac.ebi.pride.archive.dataprovider.project.SubmissionType).PARTIAL)"/>
+    </int:recipient-list-router>
+
+    <!-- Filter submission message by submission type: COMPLETE submission or PRIDE only submission -->
+    <!-- Filtered message will be forwarded to mztab generation channel -->
+    <!--<int:filter input-channel="incomingSubmissionChannel"-->
+                <!--ref="completeOrPrideSubmissionTypeFilter"-->
+                <!--output-channel="priorMzTabGenerationChannel"-->
+                <!--auto-startup="true"/>-->
+
+    <!-- message channel for incoming submissions before mzTab generation-->
+    <int:channel id="priorMzTabGenerationChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorMzTabGenerationLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="priorMzTabGenerationLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="priorMzTabGenerationLogger"/>
+
+    <!-- Service activator to activate mzTab generation command -->
+    <int:service-activator id="mzTabGenerationActivator"
+                           input-channel="priorMzTabGenerationChannel"
+                           ref="mzTabGenerationService"
+                           auto-startup="true">
+    </int:service-activator>
+
+    <!-- Filter submission message by submission type: COMPLETE submission or PRIDE only submission -->
+    <!-- Filtered message will be forwarded to mgf generation channel -->
+    <!--<int:filter input-channel="incomingSubmissionChannel"-->
+                <!--ref="completeOrPrideSubmissionTypeFilter"-->
+                <!--output-channel="priorMgfGenerationChannel"-->
+                <!--auto-startup="true"/>-->
+
+    <!-- message channel for incoming submissions before mgf generation -->
+    <int:channel id="priorMgfGenerationChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorMgfGenerationLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="priorMgfGenerationLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="priorMgfGenerationLogger"/>
+
+    <!-- Service activator to activate mgf generation -->
+    <!-- This service activator polls message in regular interval -->
+    <int:service-activator id="mgfGenerationActivator"
+                           input-channel="priorMgfGenerationChannel"
+                           ref="mgfGenerationService"
+                           auto-startup="true">
+    </int:service-activator>
+
+    <!-- message channel for incoming partial submissions -->
+    <int:channel id="priorSubmissionCompleteChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorSubmissionCompleteLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="priorSubmissionCompleteLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="priorSubmissionCompleteLogger"/>
+
+    <!-- message channel for incoming partial submissions -->
+    <int:channel id="submissionCompleteMessageChannel">
+        <int:interceptors>
+            <int:wire-tap channel="submissionCompleteMessageChannelLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="submissionCompleteMessageChannelLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="submissionCompleteMessageLogger"/>
+
+    <!-- Transform incoming submission (PARTIAL) into submission complete message -->
+   <int:transformer id="submissionCompleteTransformer"
+                    input-channel="priorSubmissionCompleteChannel"
+                    ref="submissionCompleteMessageTransformer"
+                    output-channel="submissionCompleteMessageChannel"/>
+
+
+
+</beans>

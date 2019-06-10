@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-redis="http://www.springframework.org/schema/integration/redis"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration.xsd
+                           http://www.springframework.org/schema/integration/redis http://www.springframework.org/schema/integration/redis/spring-integration-redis-3.0.xsd">
+
+    <!-- connect to post submission queue backed by redis, fetch messages and adapt them for internal channel-->
+    <int-redis:queue-inbound-channel-adapter id="postSubmissionInboundAdapter"
+                                             connection-factory="redisConnectionFactory"
+                                             channel="postSubmissionAggregationChannel"
+                                             error-channel="postSubmissionLoggingChannel"
+                                             queue="${message.post.submission.queue}"
+                                             serializer="postSubmissionJsonRedisSerializer"/>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="postSubmissionLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="postSubmissionLogger"/>
+
+    <!-- Serializer for post submission message -->
+    <bean id="postSubmissionJsonRedisSerializer"
+          class="org.springframework.data.redis.serializer.JacksonJsonRedisSerializer">
+        <constructor-arg name="type" value="uk.ac.ebi.pride.integration.message.model.impl.IndexCompletionPayload"/>
+    </bean>
+
+    <!-- post submission aggregation channel passes all the post submission messages to an aggregator -->
+    <int:channel id="postSubmissionAggregationChannel">
+        <int:interceptors>
+            <int:wire-tap channel="postSubmissionAggregationLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="postSubmissionAggregationLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="postSubmissionAggregationLogger"/>
+
+    <!-- Aggregate post submission completion messages-->
+    <!-- e.g. mzTab indexing completion message, mgf indexing completion message -->
+    <int:aggregator
+                    ref="postSubmissionAggregator"
+                    input-channel="postSubmissionAggregationChannel"
+                    output-channel="submissionCompleteMessageChannel"
+                    message-store="postSubmissionAggregatorStore">
+    </int:aggregator>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="postSubmissionAggregationDiscardLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="postSubmissionDiscardAggregationLogger"/>
+
+    <!-- Redis backed message store for post submission message aggregation -->
+    <bean id="postSubmissionAggregatorStore" class="org.springframework.integration.redis.store.RedisMessageStore">
+        <constructor-arg ref="redisConnectionFactory"/>
+    </bean>
+
+</beans>

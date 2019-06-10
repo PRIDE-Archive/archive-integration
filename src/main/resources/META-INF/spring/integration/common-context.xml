@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+                           http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd">
+
+    <!-- Scan and initialize for service endpoints -->
+    <context:component-scan base-package="uk.ac.ebi.pride.integration"/>
+
+    <!-- Default command runner -->
+    <bean id="commandRunner" class="uk.ac.ebi.pride.integration.command.runner.DefaultCommandRunner">
+        <constructor-arg name="commandResultHandler">
+            <bean class="uk.ac.ebi.pride.integration.command.handler.DefaultCommandResultHandler"/>
+        </constructor-arg>
+    </bean>
+
+    <!--load property files-->
+    <context:property-placeholder location="classpath:META-INF/prop/*.properties" ignore-unresolvable="true" order="1"/>
+
+    <util:properties id="commandConfig" location="classpath:META-INF/prop/command.properties"/>
+
+</beans>

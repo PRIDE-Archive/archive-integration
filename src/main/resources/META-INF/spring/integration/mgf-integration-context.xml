@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-redis="http://www.springframework.org/schema/integration/redis"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration.xsd
+                           http://www.springframework.org/schema/integration/redis http://www.springframework.org/schema/integration/redis/spring-integration-redis-3.0.xsd">
+
+    <!-- connect to mgf completion queue backed by redis, fetch messages and adapt them for internal channel-->
+    <int-redis:queue-inbound-channel-adapter id="mgfCompletionInboundAdapter"
+                                             connection-factory="redisConnectionFactory"
+                                             channel="priorIndexMgfChannel"
+                                             error-channel="mgfCompletionLoggingChannel"
+                                             receive-timeout="5000"
+                                             queue="${message.mgf.completion.queue}"
+                                             serializer="mgfCompletionJsonRedisSerializer"/>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="mgfCompletionLoggingChannel" log-full-message="true" level="INFO" logger-name="mgfCompletionLogger"/>
+
+    <bean id="mgfCompletionJsonRedisSerializer" class="org.springframework.data.redis.serializer.JacksonJsonRedisSerializer">
+        <constructor-arg name="type" value="uk.ac.ebi.pride.integration.message.model.impl.FileGenerationPayload"/>
+    </bean>
+
+    <!-- Queued message channel for mgf completion messages before indexing project -->
+    <int:channel id="priorIndexMgfChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorIndexMgfLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="priorIndexMgfLoggingChannel" log-full-message="true" level="INFO" logger-name="priorIndexMgfLogger"/>
+
+    <!-- Service activator to activate mgf generation -->
+    <!-- This service activator polls message in regular interval -->
+    <int:service-activator id="indexingSpectrumActivator"
+                           input-channel="priorIndexMgfChannel"
+                           ref="indexSpectrumService">
+    </int:service-activator>
+
+</beans>

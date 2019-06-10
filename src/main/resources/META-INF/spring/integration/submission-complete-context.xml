@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-redis="http://www.springframework.org/schema/integration/redis"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration.xsd
+                           http://www.springframework.org/schema/integration/redis http://www.springframework.org/schema/integration/redis/spring-integration-redis-3.0.xsd">
+
+    <!-- Channel for passing aggregated submission complete message-->
+    <int:channel id="submissionCompleteMessageChannel">
+        <int:interceptors>
+            <int:wire-tap channel="submissionCompleteMessageLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="submissionCompleteMessageLoggingChannel" log-full-message="true" level="INFO"
+                                 logger-name="submissionCompleteMessageLogger"/>
+
+
+    <!-- Send submission completion message to a message store -->
+    <!-- Keep records of all the submissions have been completed -->
+    <int-redis:store-outbound-channel-adapter id="submissionCompletionMessageStoreAdapter"
+                                              collection-type="SET"
+                                              channel="submissionCompleteMessageChannel"
+                                              redis-template="submissionCompletionRedisTemplate"
+                                              key="${message.submission.completion.queue}"/>
+
+    <!-- Redis template for persisting submission completion message -->
+    <bean id="submissionCompletionRedisTemplate" class="org.springframework.data.redis.core.RedisTemplate">
+        <property name="connectionFactory" ref="redisConnectionFactory"/>
+        <property name="keySerializer">
+            <bean class="org.springframework.data.redis.serializer.StringRedisSerializer"/>
+        </property>
+        <property name="valueSerializer">
+            <bean class="org.springframework.data.redis.serializer.JacksonJsonRedisSerializer">
+                <constructor-arg name="type"
+                                 value="uk.ac.ebi.pride.integration.message.model.impl.SubmissionCompletionPayload"/>
+            </bean>
+        </property>
+    </bean>
+
+</beans>

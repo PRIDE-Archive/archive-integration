@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-redis="http://www.springframework.org/schema/integration/redis"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration.xsd
+                           http://www.springframework.org/schema/integration/redis http://www.springframework.org/schema/integration/redis/spring-integration-redis-3.0.xsd">
+
+    <!-- connect to mztab completion queue backed by redis, fetch messages and adapt them for internal channel-->
+    <int-redis:queue-inbound-channel-adapter id="mzTabCompletionInboundAdapter"
+                                             connection-factory="redisConnectionFactory"
+                                             channel="priorIndexMzTabChannel"
+                                             error-channel="mzTabCompletionLoggingChannel"
+                                             receive-timeout="5000"
+                                             queue="${message.mztab.completion.queue}"
+                                             serializer="mzTabCompletionJsonRedisSerializer"/>
+
+    <!-- logger channel -->
+    <int:logging-channel-adapter id="mzTabCompletionLoggingChannel" log-full-message="true" level="INFO" logger-name="mzTabCompletionLogger"/>
+
+    <bean id="mzTabCompletionJsonRedisSerializer" class="org.springframework.data.redis.serializer.JacksonJsonRedisSerializer">
+        <constructor-arg name="type" value="uk.ac.ebi.pride.integration.message.model.impl.FileGenerationPayload"/>
+    </bean>
+
+
+    <!-- Incoming submission message channel -->
+    <int:channel id="priorIndexMzTabChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorIndexMzTabLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- Logging channel -->
+    <int:logging-channel-adapter id="priorIndexMzTabLoggingChannel" log-full-message="true" level="INFO" logger-name="priorIndexMzTabLogger"/>
+
+    <!-- Router for different channels -->
+    <!-- There is a problem with redis publish and subscript channel, this is why we are using router for now -->
+    <int:recipient-list-router input-channel="priorIndexMzTabChannel" id="fileTypeBasedRouter">
+        <int:recipient channel="priorIndexProteinChannel" selector-expression="payload.fileType.equals(T(uk.ac.ebi.pride.integration.message.model.FileType).MZTAB)"/>
+        <int:recipient channel="priorIndexPsmChannel" selector-expression="payload.fileType.equals(T(uk.ac.ebi.pride.integration.message.model.FileType).MZTAB)"/>
+    </int:recipient-list-router>
+
+    <!-- channel for mztab completion messages before indexing proteins -->
+    <int:channel id="priorIndexProteinChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorIndexProteinLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="priorIndexProteinLoggingChannel" log-full-message="true" level="INFO" logger-name="priorIndexProteinLogger"/>
+
+    <!-- Service activator to activate protein indexing -->
+    <int:service-activator id="indexingProteinActivator"
+                           input-channel="priorIndexProteinChannel"
+                           ref="indexProteinService">
+    </int:service-activator>
+
+    <!-- channel for mztab completion messages before indexing psms -->
+    <int:channel id="priorIndexPsmChannel">
+        <int:interceptors>
+            <int:wire-tap channel="priorIndexPsmLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+
+    <!-- logging channel -->
+    <int:logging-channel-adapter id="priorIndexPsmLoggingChannel" log-full-message="true" level="INFO" logger-name="priorIndexPsmLogger"/>
+
+    <!-- Service activator to activate psm indexing -->
+    <int:service-activator id="indexingPsmActivator"
+                           input-channel="priorIndexPsmChannel"
+                           ref="indexPsmService">
+    </int:service-activator>
+
+</beans>

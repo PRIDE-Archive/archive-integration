@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd">
+
+    <!-- Redis nodes -->
+    <bean id="redisNodeOne" class="org.springframework.data.redis.connection.RedisNode">
+        <constructor-arg name="host" value="${redis.host.one}"/>
+        <constructor-arg name="port" value="${redis.port.one}"/>
+    </bean>
+    <bean id="redisNodeTwo" class="org.springframework.data.redis.connection.RedisNode">
+        <constructor-arg name="host" value="${redis.host.two}"/>
+        <constructor-arg name="port" value="${redis.port.two}"/>
+    </bean>
+    <bean id="redisNodeThree" class="org.springframework.data.redis.connection.RedisNode">
+        <constructor-arg name="host" value="${redis.host.three}"/>
+        <constructor-arg name="port" value="${redis.port.three}"/>
+    </bean>
+    <bean id="redisNodeFour" class="org.springframework.data.redis.connection.RedisNode">
+        <constructor-arg name="host" value="${redis.host.four}"/>
+        <constructor-arg name="port" value="${redis.port.four}"/>
+    </bean>
+    <bean id="redisNodeFive" class="org.springframework.data.redis.connection.RedisNode">
+        <constructor-arg name="host" value="${redis.host.five}"/>
+        <constructor-arg name="port" value="${redis.port.five}"/>
+    </bean>
+    <bean id="redisNodeSix" class="org.springframework.data.redis.connection.RedisNode">
+        <constructor-arg name="host" value="${redis.host.six}"/>
+        <constructor-arg name="port" value="${redis.port.six}"/>
+    </bean>
+
+    <!-- Redis cluster config -->
+    <bean id="redisClusterConfig" class="org.springframework.data.redis.connection.RedisClusterConfiguration">
+        <property name="clusterNodes">
+            <set>
+                <ref bean="redisNodeOne"/>
+                <ref bean="redisNodeTwo"/>
+                <ref bean="redisNodeThree"/>
+                <ref bean="redisNodeFour"/>
+                <ref bean="redisNodeFive"/>
+                <ref bean="redisNodeSix"/>
+            </set>
+        </property>
+    </bean>
+
+    <!-- Redis connection factory -->
+    <bean id="redisConnectionFactory" class="org.springframework.data.redis.connection.jedis.JedisConnectionFactory">
+        <constructor-arg name="clusterConfig" ref="redisClusterConfig"/>
+        <property name="hostName" value="${redis.host}"/>
+        <property name="port" value="${redis.port}"/>
+        <property name="usePool" value="true"/>
+        <property name="poolConfig" ref="dataJedisPoolConfig"/>
+    </bean>
+
+    <!-- Redis connection pool configuration -->
+    <bean id="dataJedisPoolConfig" class="redis.clients.jedis.JedisPoolConfig">
+        <property name="blockWhenExhausted" value="false"/>
+        <property name="maxTotal" value="100"/>
+        <property name="maxIdle" value="50"/>
+        <property name="minIdle" value="50"/>
+        <property name="testOnBorrow" value="true"/>
+    </bean>
+
+    <context:property-placeholder location="META-INF/prop/redis.properties" ignore-unresolvable="true" order="1"/>
+
+</beans>
